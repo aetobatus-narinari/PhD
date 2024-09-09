@@ -1,0 +1,60 @@
+#fastqc
+
+for file in *fq.gz
+	do
+		echo ${file%_*}
+		fastqc -o ${file%_*} $file
+done
+
+#Trimmomatic paired-end
+
+for file1 in *_1.fq.gz; do
+    file2="${file1%_1.fq.gz}_2.fq.gz"
+    output_prefix="${file1%_1.fq.gz}"
+
+    TrimmomaticPE $file1 $file2 \
+        ${output_prefix}_1P_trimmed.fq.gz ${output_prefix}_1U.fq.gz \
+        ${output_prefix}_2P_trimmed.fq.gz ${output_prefix}_2U.fq.gz \
+        HEADCROP:11 SLIDINGWINDOW:4:15 LEADING:3 TRAILING:3 MINLEN:40
+
+    fastqc ${output_prefix}_1P_trimmed.fq.gz ${output_prefix}_2P_trimmed.fq.gz
+done
+
+#alignment
+
+REFERENCE="$TF13.fna"
+bwa index $REFERENCE
+
+echo "Processing single-end reads"
+for file in *_se_trimmed.fq.gz; do
+	base_name="${file%_se_trimmed.fq.gz}"
+		bwa aln $REFERENCE $file1 > ${base_name}.sai
+		bwa samse $REFERENCE ${base_name}.sai $file > ${base_name}_aln-se.sam
+
+		samtools flagstat ${base_name}_aln-se.sam > ${base_name}_flagstat.txt
+		samtools view -Sb ${base_name}_aln-se.sam > ${base_name}_aln-se.bam
+		samtools sort ${base_name}_aln-se.bam -o ${base_name}_sorted.bam
+
+		featureCounts -T 4 -a *.gff -t CDS -g ID -s 2 -o ${base_name}_fc.txt ${base_name}_soted.bam
+done
+
+echo "Processing paired-end reads"
+for file1 in *_1P_trimmed.fq.gz; do
+	base_name="${file1%_1P_trimmed.fq.gz}"
+	file2="${base_name}_2P_trimmed.fq.gz}"
+if [ -f "$file2" ]; then
+	echo "Processing paired files: $file1 and $file2"
+		bwa aln $REFERENCE $file1 > ${base_name}_1.sai
+		bwa aln $REFERENCE $file2 > ${base_name}_2.sai
+		bwa sampe $REFERENCE ${base_name}_1.sai ${base_name}_2.sai $file1 $file2 > ${base_name}_aln-pe.sam
+
+		samtools flagstat ${base_name}_aln-pe.sam > ${base_name}_flagstat.txt
+		samtools view -Sb ${base_name}_aln-pe.sam > ${base_name}_aln-pe.bam
+		samtools sort ${base_name}_aln-pe.bam -o ${base_name}_sorted.bam
+
+		featureCounts -T 4 -a *.gff -t CDS -g ID -s 2 -p -o ${base_name}_fc.txt ${base_name}_soted.bam
+	else
+		echo: "Warning: File $file2 not fount for $file1. Skipping this pair."
+	fi
+done
+

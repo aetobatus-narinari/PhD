@@ -1,0 +1,93 @@
+cat *.gbk > vse_prevotele.gbk
+extractfeat vse_prevotele.gbk vse_prevotele_CDS -type CDS -describe product,locus_tag  
+transeq vse_prevotele_CDS vse_prevotele_prot
+makeblastdb -in vse_prevotele_prot -dbtype prot -out prevotelladb
+
+
+
+rule extractfeat:
+	input:
+		"/media/murva/450A-F844/PULs/Prevotella_sp_KHP1.gbkU"
+	output:
+		"cds_PspKHP1_{id}.fasta"
+	shell:
+		"""
+		extractfeat {input} {output} -value PspKHP1_{wildcards.id} -type CDS -describe product,locus_tag
+		"""
+rule transeq:
+	input: 
+		"cds_PspKHP1_{id}.fasta"
+	output:
+		"ak_PspKHP1_{id}"
+	shell:
+		"""
+		transeq {input} {output}
+		"""
+rule blastp:
+	input:
+		"ak_PspKHP1_{id}"
+	output:
+		"homology_PspKHP1_{id}"
+	shell:
+		"""
+		blastp -query {input} -db /media/murva/450A-F844/PULs/prevotelladb/prevotelladb -out {output}
+		"""
+rule homology_numbers:
+	input:
+		"homology_PspKHP1_{id}"
+	output:
+		"numbers_homology_PspKHP1_{id}"
+	shell:
+		"""
+		sed -e '/Identities/G' -n -e '/^>/,/Identities/p' {input} > {output}
+		"""
+rule identities_old:
+	input:
+		"numbers_homology_PspKHP1_{id}"
+	output:
+		"old_identities_{id}"
+	shell:
+		"""
+		awk '/locus_tag/{{print $3}}/Identities/{{print $4}}' {input} > {output}
+		"""		
+rule identities_old2:
+	input:
+		"old_identities_{id}"
+	output:
+		"old2_identities_{id}"
+	shell:
+		"""
+		sed 's/locus_tag="//g' {input} > {output}
+		"""
+rule identities_final:
+	input:
+		"old2_identities_{id}"
+	output:
+		"new_identities_{id}"
+	shell:
+		"""
+		sed 's/[(),"]//g' {input} > {output}
+		"""
+rule two columns:		
+	input:
+		"new_identities_{id}"
+	output:
+		"col_identities_{id}"
+	shell:
+		"""
+		paste --serial --delimiters '\t\n' {input} > {output}
+		"""
+rule sort:
+	input:
+		"col_identities_{id}"
+	output:
+		"sort_{id}"
+	shell:
+		"""
+		sort -k 1 -o {output} {input}
+		"""
+
+hdr() { awk 'FNR==1{print "\0", FILENAME}1' "$1";}
+join -a1 -a2 -e 0 -o auto <(hdr sort_«number«) <(hdr sort_«number«) > join.tmp
+for file in sort_*; do join -a1 -a2 -e 0 -o auto join.tmp <(hdr "$file") > join.tmp.1; mv join.tmp.1 join.tmp; done
+tr -d '\0' <join.tmp > »ime PULa«_PULs
